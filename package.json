@@ -1,0 +1,34 @@
+{
+  "name": "pi-session-autoname",
+  "version": "0.1.0",
+  "description": "Automatically name new Pi sessions with a dedicated configured model.",
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-extension",
+    "session-name",
+    "autoname"
+  ],
+  "engines": {
+    "node": ">=22.6.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=0.84.0"
+  },
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --experimental-strip-types --test test/*.test.ts",
+    "pack:check": "npm pack --dry-run"
+  }
+}
