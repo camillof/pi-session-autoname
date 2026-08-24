@@ -26,10 +26,10 @@ no installed runtime dependencies.
 
 ## Install
 
-From npm after publication:
+From npm:
 
 ```bash
-pi install npm:pi-session-autoname
+pi install npm:@camillof/pi-session-autoname
 ```
 
 Try a local checkout without installing it:
