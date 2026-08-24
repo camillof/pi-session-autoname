@@ -1,5 +1,5 @@
 {
-  "name": "pi-session-autoname",
+  "name": "@camillof/pi-session-autoname",
   "version": "0.1.0",
   "description": "Automatically name new Pi sessions with a dedicated configured model.",
   "type": "module",
@@ -14,8 +14,15 @@
   "engines": {
     "node": ">=22.6.0"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/camillof/pi-session-autoname.git"
+  },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": ">=0.84.0"
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "pi": {
     "extensions": [
