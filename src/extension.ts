@@ -15,6 +15,7 @@ import {
   extractResponseText,
   findTicketReference,
   hasUserMessage,
+  redactSecrets,
   type FirstExchange,
 } from "./naming.ts";
 
@@ -30,14 +31,62 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function modelStatus(snapshot: ConfigSnapshot, ctx: ExtensionContext): string {
+function modelStatus(snapshot: ConfigSnapshot, ctx: ExtensionContext): string[] {
   const reference = snapshot.config.model;
-  if (!reference) return "not configured";
+  if (!reference) {
+    return [
+      "Model: not configured",
+      "Catalog: not checked",
+      "Provider authentication: not checked",
+      "Status: not ready",
+    ];
+  }
   const parsed = parseModelReference(reference);
-  if (!parsed) return `${reference} (invalid)`;
-  return ctx.modelRegistry.find(parsed.provider, parsed.modelId)
-    ? `${reference} (available)`
-    : `${reference} (not found)`;
+  if (!parsed) {
+    return [
+      `Model: ${reference}`,
+      "Catalog: invalid reference",
+      "Provider authentication: not checked",
+      "Status: not ready",
+    ];
+  }
+
+  const model = ctx.modelRegistry.find(parsed.provider, parsed.modelId);
+  if (!model) {
+    return [
+      `Model: ${reference}`,
+      "Catalog: not found",
+      "Provider authentication: not checked",
+      "Status: not ready",
+    ];
+  }
+
+  const authenticated = ctx.modelRegistry.hasConfiguredAuth(model);
+  return [
+    `Model: ${reference}`,
+    "Catalog: found",
+    `Provider authentication: ${authenticated ? "configured" : "not configured"}`,
+    `Status: ${authenticated ? "ready" : "not ready"}`,
+  ];
+}
+
+function completionFailure(response: unknown): string | null {
+  if (typeof response !== "object" || response === null) return null;
+  const candidate = response as { stopReason?: unknown; errorMessage?: unknown };
+  if (candidate.stopReason !== "error" && candidate.stopReason !== "aborted") return null;
+
+  if (typeof candidate.errorMessage === "string" && candidate.errorMessage.trim()) {
+    const safeMessage = redactSecrets(candidate.errorMessage)
+      .replace(/[\p{Cc}\p{Cf}]+/gu, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 240);
+    if (safeMessage) return `Naming model failed: ${safeMessage}`;
+  }
+
+  return candidate.stopReason === "aborted"
+    ? "Naming model request was aborted"
+    : "Naming model request failed";
 }
 
 export function createSessionAutonameExtension(dependencies: ExtensionDependencies) {
@@ -75,6 +124,9 @@ export function createSessionAutonameExtension(dependencies: ExtensionDependenci
       if (!reference) throw new NamingError("Configured naming model is invalid");
       const model = ctx.modelRegistry.find(reference.provider, reference.modelId);
       if (!model) throw new NamingError(`Naming model not found: ${config.model}`);
+      if (!ctx.modelRegistry.hasConfiguredAuth(model)) {
+        throw new NamingError(`Naming provider is not authenticated: ${reference.provider}`);
+      }
 
       const timer = setTimeout(() => {
         controller.abort(new DOMException("Naming request timed out", "TimeoutError"));
@@ -100,7 +152,23 @@ export function createSessionAutonameExtension(dependencies: ExtensionDependenci
           },
         );
 
-        const title = composeTitle(extractResponseText(response), findTicketReference(exchange));
+        const failure = completionFailure(response);
+        if (failure) throw new NamingError(failure);
+
+        const output = extractResponseText(response);
+        if (!output) {
+          const stopReason =
+            typeof response === "object" && response !== null
+              ? (response as { stopReason?: unknown }).stopReason
+              : undefined;
+          throw new NamingError(
+            stopReason === "length"
+              ? "Naming model returned no title before reaching its output limit"
+              : "Naming model returned no text",
+          );
+        }
+
+        const title = composeTitle(output, findTicketReference(exchange));
         if (!title) throw new NamingError("Naming model returned an invalid title");
         return title;
       } catch (error) {
@@ -192,7 +260,7 @@ export function createSessionAutonameExtension(dependencies: ExtensionDependenci
           const current = refreshConfig(ctx.cwd);
           const lines = [
             `Automatic naming: ${current.config.enabled ? "enabled" : "disabled"}`,
-            `Model: ${modelStatus(current, ctx)}`,
+            ...modelStatus(current, ctx),
             `Timeout: ${current.config.timeoutMs}ms`,
             `Global config: ${current.paths.global}${current.present.global ? "" : " (not found)"}`,
             `Project config: ${current.paths.project}${current.present.project ? "" : " (not found)"}`,
@@ -214,9 +282,20 @@ export function createSessionAutonameExtension(dependencies: ExtensionDependenci
           }
 
           const value = values[0];
-          if (value !== "reset" && !parseModelReference(value)) {
-            ctx.ui.notify("Model must use the form provider/model-id", "warning");
-            return;
+          let authenticated = false;
+          if (value !== "reset") {
+            const reference = parseModelReference(value);
+            if (!reference) {
+              ctx.ui.notify("Model must use the form provider/model-id", "warning");
+              return;
+            }
+
+            const configuredModel = ctx.modelRegistry.find(reference.provider, reference.modelId);
+            if (!configuredModel) {
+              ctx.ui.notify(`Naming model not found: ${value}`, "warning");
+              return;
+            }
+            authenticated = ctx.modelRegistry.hasConfiguredAuth(configuredModel);
           }
 
           const paths = getConfigPaths(dependencies.getAgentDir(), ctx.cwd);
@@ -228,8 +307,10 @@ export function createSessionAutonameExtension(dependencies: ExtensionDependenci
             ctx.ui.notify(
               value === "reset"
                 ? `Reset ${scope} naming model; effective model is ${current.config.model ?? "not configured"}`
-                : `Set ${scope} naming model to ${value}`,
-              "info",
+                : authenticated
+                  ? `Set ${scope} naming model to ${value}`
+                  : `Set ${scope} naming model to ${value}; provider is not authenticated`,
+              value !== "reset" && !authenticated ? "warning" : "info",
             );
           } catch (error) {
             ctx.ui.notify(`Could not update configuration: ${errorMessage(error)}`, "error");

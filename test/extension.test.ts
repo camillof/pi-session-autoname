@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -29,6 +29,8 @@ function harness(
   options: {
     config?: Record<string, unknown>;
     initialName?: string;
+    authenticated?: boolean;
+    modelAvailable?: (provider: string, modelId: string) => boolean;
     complete?: (model: unknown, context: any, options: any) => Promise<unknown>;
   } = {},
 ) {
@@ -52,8 +54,8 @@ function harness(
   let findCalls = 0;
   let prompt = "";
 
-  const model = { provider: "test", id: "title-model" };
   const complete = options.complete ?? (async () => response("Fix message retries"));
+  const modelAvailable = options.modelAvailable ?? (() => true);
   const context = {
     cwd,
     model: { provider: "active", id: "conversation-model" },
@@ -61,7 +63,10 @@ function harness(
     modelRegistry: {
       find(provider: string, modelId: string) {
         findCalls++;
-        return provider === "test" && modelId === "title-model" ? model : undefined;
+        return modelAvailable(provider, modelId) ? { provider, id: modelId } : undefined;
+      },
+      hasConfiguredAuth() {
+        return options.authenticated ?? true;
       },
       async complete(selectedModel: unknown, completionContext: any, completionOptions: any) {
         completeCalls++;
@@ -269,6 +274,61 @@ test("failed manual generation preserves the existing name", async (t) => {
   assert.match(app.notifications.at(-1)?.message ?? "", /provider unavailable/);
 });
 
+test("manual generation preserves provider completion errors", async (t) => {
+  const app = harness(t, {
+    config: { model: "openai/title-model" },
+    initialName: "Keep me",
+    complete: async () => ({
+      content: [],
+      stopReason: "error",
+      errorMessage: 'No API key found for "openai"',
+    }),
+  });
+  app.setBranch(firstExchange);
+  app.emit("session_start");
+
+  await app.command("");
+
+  const notification = app.notifications.at(-1)?.message ?? "";
+  assert.equal(app.name, "Keep me");
+  assert.match(notification, /No API key found for "openai"/);
+  assert.doesNotMatch(notification, /invalid title/i);
+});
+
+test("manual generation reports empty and output-limited responses precisely", async (t) => {
+  const empty = harness(t, {
+    config: { model: "test/title-model" },
+    complete: async () => ({ content: [], stopReason: "stop" }),
+  });
+  empty.setBranch(firstExchange);
+  empty.emit("session_start");
+  await empty.command("");
+  assert.match(empty.notifications.at(-1)?.message ?? "", /returned no text/);
+
+  const limited = harness(t, {
+    config: { model: "test/title-model" },
+    complete: async () => ({ content: [], stopReason: "length" }),
+  });
+  limited.setBranch(firstExchange);
+  limited.emit("session_start");
+  await limited.command("");
+  assert.match(limited.notifications.at(-1)?.message ?? "", /output limit/);
+});
+
+test("unauthenticated naming providers fail before completion", async (t) => {
+  const app = harness(t, {
+    config: { model: "openai/title-model" },
+    authenticated: false,
+  });
+  app.setBranch(firstExchange);
+  app.emit("session_start");
+
+  await app.command("");
+
+  assert.equal(app.completeCalls, 0);
+  assert.match(app.notifications.at(-1)?.message ?? "", /not authenticated: openai/);
+});
+
 test("model configuration commands persist global and project settings", async (t) => {
   const app = harness(t);
   app.emit("session_start");
@@ -281,5 +341,35 @@ test("model configuration commands persist global and project settings", async (
 
   await app.command("model reset --local");
   await app.command("status");
-  assert.match(app.notifications.at(-1)?.message ?? "", /test\/title-model \(available\)/);
+  const status = app.notifications.at(-1)?.message ?? "";
+  assert.match(status, /Model: test\/title-model/);
+  assert.match(status, /Catalog: found/);
+  assert.match(status, /Provider authentication: configured/);
+  assert.match(status, /Status: ready/);
+});
+
+test("model configuration rejects models missing from the registry", async (t) => {
+  const app = harness(t, {
+    modelAvailable: () => false,
+  });
+  app.emit("session_start");
+
+  await app.command("model missing/title-model");
+
+  assert.match(app.notifications.at(-1)?.message ?? "", /Naming model not found/);
+  assert.equal(existsSync(path.join(app.agentDir, "session-autoname.json")), false);
+});
+
+test("model configuration saves unauthenticated models with a warning", async (t) => {
+  const app = harness(t, { authenticated: false });
+  app.emit("session_start");
+
+  await app.command("model openai/title-model");
+  assert.match(app.notifications.at(-1)?.message ?? "", /provider is not authenticated/);
+
+  await app.command("status");
+  const status = app.notifications.at(-1)?.message ?? "";
+  assert.match(status, /Catalog: found/);
+  assert.match(status, /Provider authentication: not configured/);
+  assert.match(status, /Status: not ready/);
 });

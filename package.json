@@ -1,6 +1,6 @@
 {
   "name": "@camillof/pi-session-autoname",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Automatically name new Pi sessions with a dedicated configured model.",
   "type": "module",
   "license": "MIT",
