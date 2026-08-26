@@ -185,6 +185,14 @@ export function createSessionAutonameExtension(dependencies: ExtensionDependenci
       if (config.debug) ctx.ui.notify(`Session autoname: ${message}`, "warning");
     };
 
+    const setGeneratedTitle = (title: string, ctx: ExtensionContext): void => {
+      // Pi reacts to setSessionName() by restoring its default
+      // "π - <session> - <cwd>" terminal title. Override it afterwards so the
+      // generated session name is also the complete terminal tab/window title.
+      pi.setSessionName(title);
+      ctx.ui.setTitle(title);
+    };
+
     pi.on("session_start", (_event, ctx) => {
       abortActiveRequest();
       sessionGeneration++;
@@ -233,7 +241,7 @@ export function createSessionAutonameExtension(dependencies: ExtensionDependenci
           ) {
             return;
           }
-          pi.setSessionName(title);
+          setGeneratedTitle(title, ctx);
           autoSucceeded = true;
         })
         .catch((error) => {
@@ -353,7 +361,7 @@ export function createSessionAutonameExtension(dependencies: ExtensionDependenci
           ) {
             return;
           }
-          pi.setSessionName(title);
+          setGeneratedTitle(title, ctx);
           autoSucceeded = true;
           ctx.ui.notify(`Session named: ${title}`, "info");
         } catch (error) {

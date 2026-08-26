@@ -48,6 +48,7 @@ function harness(
   const handlers = new Map<string, Handler>();
   const commands = new Map<string, CommandHandler>();
   const notifications: Array<{ message: string; level: string }> = [];
+  const terminalTitles: string[] = [];
   let sessionName = options.initialName;
   let branch: unknown[] = [];
   let completeCalls = 0;
@@ -75,6 +76,9 @@ function harness(
       },
     },
     ui: {
+      setTitle(title: string) {
+        terminalTitles.push(title);
+      },
       notify(messageText: string, level: string) {
         notifications.push({ message: messageText, level });
       },
@@ -103,6 +107,7 @@ function harness(
     cwd,
     context,
     notifications,
+    terminalTitles,
     setBranch(value: unknown[]) {
       branch = value;
     },
@@ -159,6 +164,7 @@ test("automatic naming starts only after the first settled event and does not bl
   resolveCompletion(response("Improve retry handling"));
   await flush();
   assert.equal(app.name, "AIR-4933: Improve retry handling");
+  assert.deepEqual(app.terminalTitles, ["AIR-4933: Improve retry handling"]);
 
   app.emit("agent_settled");
   await flush();
@@ -211,6 +217,7 @@ test("manual regeneration always uses the original completed exchange", async (t
   await app.command("");
 
   assert.equal(app.name, "AIR-4933: Fix message retries");
+  assert.deepEqual(app.terminalTitles, ["AIR-4933: Fix message retries"]);
   assert.match(app.prompt, /Implement AIR-4933 retry handling/);
   assert.match(app.prompt, /Implemented resilient message retries/);
   assert.doesNotMatch(app.prompt, /tiny unrelated follow-up/);

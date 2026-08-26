@@ -12,6 +12,7 @@ no installed runtime dependencies.
 - Runs once after Pi's first `agent_settled` event.
 - Uses the original first user message and final assistant response, excluding tool output.
 - Produces a title of at most 48 Unicode characters.
+- Uses the generated name as the complete terminal title, without Pi's `π -` prefix.
 - Preserves names set with `/name`, `--name`, or another extension.
 - Prefixes Linear-style references, for example `AIR-4933: Fix message retries`.
 - Recognizes both plain keys and `linear.app/<workspace>/issue/<key>` URLs.
