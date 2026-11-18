@@ -26,15 +26,16 @@ test("project configuration overrides global configuration", (t) => {
   const paths = getConfigPaths(agentDir, cwd);
   writeFileSync(
     paths.global,
-    JSON.stringify({ model: "anthropic/claude-haiku", timeoutMs: 12_000, debug: true }),
+    JSON.stringify({ model: "anthropic/claude-haiku", reasoning: "medium", timeoutMs: 12_000, debug: true }),
   );
-  writeFileSync(paths.project, JSON.stringify({ model: "openrouter/vendor/model", debug: false }));
+  writeFileSync(paths.project, JSON.stringify({ model: "openrouter/vendor/model", reasoning: "off", debug: false }));
 
   const snapshot = loadConfig(agentDir, cwd);
 
   assert.deepEqual(snapshot.config, {
     enabled: true,
     model: "openrouter/vendor/model",
+    reasoning: "off",
     timeoutMs: 12_000,
     debug: false,
   });
@@ -47,7 +48,7 @@ test("invalid fields fall back independently and produce warnings", (t) => {
   const paths = getConfigPaths(agentDir, cwd);
   writeFileSync(
     paths.global,
-    JSON.stringify({ enabled: "yes", model: "missing-slash", timeoutMs: 10, debug: 1 }),
+    JSON.stringify({ enabled: "yes", model: "missing-slash", reasoning: "turbo", timeoutMs: 10, debug: 1 }),
   );
 
   const snapshot = loadConfig(agentDir, cwd);
@@ -55,10 +56,12 @@ test("invalid fields fall back independently and produce warnings", (t) => {
   assert.deepEqual(snapshot.config, {
     enabled: true,
     model: null,
+    reasoning: "low",
     timeoutMs: 10_000,
     debug: false,
   });
-  assert.equal(snapshot.warnings.length, 4);
+  assert.equal(snapshot.warnings.length, 5);
+  assert.ok(snapshot.warnings.some((warning) => warning.includes('"reasoning"')));
 });
 
 test("malformed project JSON does not discard valid global configuration", (t) => {

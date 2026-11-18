@@ -30,6 +30,7 @@ function harness(
     config?: Record<string, unknown>;
     initialName?: string;
     authenticated?: boolean;
+    reasoningModel?: boolean;
     modelAvailable?: (provider: string, modelId: string) => boolean;
     complete?: (model: unknown, context: any, options: any) => Promise<unknown>;
   } = {},
@@ -64,15 +65,17 @@ function harness(
     modelRegistry: {
       find(provider: string, modelId: string) {
         findCalls++;
-        return modelAvailable(provider, modelId) ? { provider, id: modelId } : undefined;
+        return modelAvailable(provider, modelId)
+          ? { provider, id: modelId, reasoning: options.reasoningModel ?? true }
+          : undefined;
       },
       hasConfiguredAuth() {
         return options.authenticated ?? true;
       },
-      async complete(selectedModel: unknown, completionContext: any, completionOptions: any) {
+      streamSimple(selectedModel: unknown, completionContext: any, completionOptions: any) {
         completeCalls++;
         prompt = completionContext.messages[0].content[0].text;
-        return complete(selectedModel, completionContext, completionOptions);
+        return { result: () => complete(selectedModel, completionContext, completionOptions) };
       },
     },
     ui: {
@@ -169,6 +172,27 @@ test("automatic naming starts only after the first settled event and does not bl
   app.emit("agent_settled");
   await flush();
   assert.equal(app.completeCalls, 1);
+});
+
+test("naming requests use the configured reasoning level only on reasoning models", async (t) => {
+  for (const [reasoning, reasoningModel, expected] of [
+    [undefined, true, "low"],
+    ["medium", true, "medium"],
+    ["off", true, undefined],
+    ["high", false, undefined],
+  ] as const) {
+    const app = harness(t, {
+      config: { model: "test/title-model", reasoning },
+      reasoningModel,
+      complete: async (_model, _context, options) => {
+        assert.equal(options.reasoning, expected);
+        return response("Fix message retries");
+      },
+    });
+    app.setBranch(firstExchange);
+    await app.command("");
+    assert.equal(app.name, "AIR-4933: Fix message retries", app.notifications.at(-1)?.message);
+  }
 });
 
 test("automatic naming does not use the active model when no dedicated model is configured", (t) => {
@@ -350,6 +374,7 @@ test("model configuration commands persist global and project settings", async (
   await app.command("status");
   const status = app.notifications.at(-1)?.message ?? "";
   assert.match(status, /Model: test\/title-model/);
+  assert.match(status, /Reasoning: low/);
   assert.match(status, /Catalog: found/);
   assert.match(status, /Provider authentication: configured/);
   assert.match(status, /Status: ready/);

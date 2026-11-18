@@ -66,6 +66,7 @@ Configuration can also be written directly as JSON. Global configuration lives a
 {
   "enabled": true,
   "model": "anthropic/claude-haiku-4-5",
+  "reasoning": "low",
   "timeoutMs": 10000,
   "debug": false
 }
@@ -75,6 +76,7 @@ Configuration can also be written directly as JSON. Global configuration lives a
 | --- | --- | --- |
 | `enabled` | `true` | Enables the one automatic naming attempt. Manual `/autoname` still works when false. |
 | `model` | `null` | Required dedicated model in `provider/model-id` form. |
+| `reasoning` | `"low"` | Naming request only. Options: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. Pi maps the requested level to the model's supported levels. `off` uses the previous behavior (no level requested by the extension). |
 | `timeoutMs` | `10000` | Request timeout, accepted range 1,000–60,000 ms. |
 | `debug` | `false` | Shows otherwise silent automatic naming failures. |
 
@@ -83,7 +85,7 @@ Configuration can also be written directly as JSON. Global configuration lives a
 | Command | Behavior |
 | --- | --- |
 | `/autoname` | Regenerate from the original first exchange and replace the current name on success. |
-| `/autoname status` | Show effective configuration, model availability, paths, and warnings. |
+| `/autoname status` | Show effective configuration (including the requested reasoning level), model availability, paths, and warnings. |
 | `/autoname model <provider/model-id>` | Set the global naming model. |
 | `/autoname model <provider/model-id> --local` | Set the project naming model. |
 | `/autoname model reset [--local]` | Remove the model override at that scope. |

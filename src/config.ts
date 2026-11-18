@@ -8,9 +8,12 @@ import {
 } from "node:fs";
 import path from "node:path";
 
+const REASONING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+
 export interface SessionAutonameConfig {
   enabled: boolean;
   model: string | null;
+  reasoning: (typeof REASONING_LEVELS)[number];
   timeoutMs: number;
   debug: boolean;
 }
@@ -38,6 +41,7 @@ export interface ModelReference {
 export const DEFAULT_CONFIG: Readonly<SessionAutonameConfig> = Object.freeze({
   enabled: true,
   model: null,
+  reasoning: "low",
   timeoutMs: 10_000,
   debug: false,
 });
@@ -104,6 +108,12 @@ function applyConfig(
     } else {
       warnings.push(`${source}: "model" must be null or "provider/model-id"`);
     }
+  }
+
+  if ("reasoning" in input) {
+    const level = REASONING_LEVELS.find((level) => level === input.reasoning);
+    if (level) target.reasoning = level;
+    else warnings.push(`${source}: "reasoning" must be one of ${REASONING_LEVELS.join(", ")}`);
   }
 
   if ("timeoutMs" in input) {

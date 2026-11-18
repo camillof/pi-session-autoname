@@ -134,7 +134,8 @@ export function createSessionAutonameExtension(dependencies: ExtensionDependenci
       timer.unref();
 
       try {
-        const response = await ctx.modelRegistry.complete(
+        const reasoning = model.reasoning && config.reasoning !== "off" ? config.reasoning : undefined;
+        const response = await ctx.modelRegistry.streamSimple(
           model,
           {
             messages: [
@@ -146,11 +147,13 @@ export function createSessionAutonameExtension(dependencies: ExtensionDependenci
             ],
           },
           {
-            maxTokens: 64,
+            reasoning,
+            // Some providers count reasoning tokens against the same limit as the title.
+            maxTokens: reasoning ? 1024 : 64,
             signal: controller.signal,
             cacheRetention: "none",
           },
-        );
+        ).result();
 
         const failure = completionFailure(response);
         if (failure) throw new NamingError(failure);
@@ -269,6 +272,7 @@ export function createSessionAutonameExtension(dependencies: ExtensionDependenci
           const lines = [
             `Automatic naming: ${current.config.enabled ? "enabled" : "disabled"}`,
             ...modelStatus(current, ctx),
+            `Reasoning: ${current.config.reasoning}`,
             `Timeout: ${current.config.timeoutMs}ms`,
             `Global config: ${current.paths.global}${current.present.global ? "" : " (not found)"}`,
             `Project config: ${current.paths.project}${current.present.project ? "" : " (not found)"}`,
